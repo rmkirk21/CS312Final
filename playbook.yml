@@ -1,1 +1,119 @@
+---
+- name: Create Minecraft Server on AWS
+  hosts: localhost
+  gather_facts: yes
 
+  vars:
+    aws_region: "us-west-2"
+    key_name: "minecraft"
+    public_key_path: "~/.ssh/minecraft.pub"
+    security_group: "minecraft"
+    instance_type: "t3.small"
+    ami_id: "ami-0b20a6f09484773af"
+    minecraft_port: "25565"
+
+  tasks:
+    - name: Create AWS Key Pair
+      amazon.aws.ec2_key:
+        name: "{{ key_name }}"
+        key_material: "{{ lookup('file', public_key_path) }}"
+        region: "{{ aws_region }}"
+      register: keypair
+
+    - name: Create Security Group
+      amazon.aws.ec2_security_group:
+        name: "{{ security_group }}"
+        description: "Secuirty Group for Minecraft Server"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            ports:
+              - "{{ minecraft_port }}"
+              - 22
+            cidr_ip: "0.0.0.0/0"
+
+    - name: Launch EC2 Instance
+      amazon.aws.ec2_instance:
+        name: "Minecraft Server"
+        region: "{{ aws_region }}"
+        key_name: "{{ key_name }}"
+        instance_type: "{{ instance_type }}"
+        image_id: "{{ ami_id }}"
+        wait: yes
+        security_group: "{{ security_group }}"
+        network:
+          assign_public_ip: true
+      tags: ['create_ec2']
+      register: ec2
+
+    - name: Add Minecraft Server to Hosts
+      ansible.builtin.add_host:
+        name: "{{ ec2.instances[0].public_ip_address }}"
+        groups: Minecraft_Server
+
+- name: Setup Minecraft Server
+  hosts: Minecraft_Server
+  user: ec2-user
+  become: true
+  become_user: root
+  gather_facts: no
+
+  tasks:
+    - name: Wait for EC2 Instnace to Start
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+
+    - name: Update EC2 Instance
+      dnf:
+        name: "*"
+        state: latest
+
+    - name: Install Java
+      dnf:
+        name: "java-21-amazon-corretto-devel"
+        state: latest
+
+    - name: Install Cron
+      dnf:
+        name: "cronie"
+        state: latest
+
+    - name: Enable and Start Cron
+      ansible.builtin.systemd:
+        name: crond.service
+        enabled: yes
+        state: started
+
+    - name: Create Cron Job to Start Minecraft Server
+      ansible.builtin.cron:
+        name: "Start Minecraft Server"
+        special_time: reboot
+        job: "cd /minecraft-server && java -Xmx1G -Xms1G -jar /minecraft-server/server.jar nogui"
+
+    - name: Create /minecraft-server Directory
+      ansible.builtin.file:
+        path: /minecraft-server
+        state: directory
+        mode: "7777"
+
+    - name: Download Minecraft Server
+      ansible.builtin.get_url:
+        url: https://piston-data.mojang.com/v1/objects/145ff0858209bcfc164859ba735d4199aafa1eea/server.jar
+        dest: /minecraft-server/server.jar
+
+    - name: Initialize Minecraft Server
+      ansible.builtin.command: java -Xmx1G -Xms1G -jar server.jar nogui
+      args:
+        chdir: /minecraft-server
+
+    - name: Accept Minecraft Server EULA
+      ansible.builtin.lineinfile:
+        path: /minecraft-server/eula.txt
+        regexp: '^eula='
+        line: eula=true
+
+    - name: Reboot Server
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
