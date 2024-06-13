@@ -3,6 +3,7 @@
 ## Requirements
 The following requirements are needed to run the ansible-playbook:
 - Amazon CLI
+  - amazon.aws
 - AWS Academy Learner Lab
 - Ansible
 - boto3
@@ -210,6 +211,7 @@ $ ansible-playbook -i inventory.ini playbook.yml
 ## Resources
 The following is a list of resources used for this project:
 - Amazon CLI - https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+- amazon.aws - https://galaxy.ansible.com/ui/repo/published/amazon/aws/docs/
 - Ansible - https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html
 - boto3 - https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html
 - Minecraft Server - https://www.minecraft.net/en-us/download/server
